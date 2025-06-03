@@ -1,0 +1,1 @@
+This is a Nationwide Prioritization Map of Philippine Local Government Units based on Land Cover and Land Use Changes (LCLUC) sourced from the Global Land Analysis and Discovery (GLAD) Laboratory of the University of Maryland.
