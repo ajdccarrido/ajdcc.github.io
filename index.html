@@ -33,6 +33,7 @@
         .title-block {
             font-size: 20px;
             font-weight: bold;
+            font-family: 'Times New Roman', Times, serif
         }
 
         #topLGUs {
@@ -44,7 +45,7 @@
         border-radius: 5px;
         max-height: 40vh;
         overflow: auto;
-        font-size: 14px;
+        font-size: 16px;
         box-shadow: 0 0 10px rgba(0,0,0,0.2);
         z-index: 1000;  /* <-- Add this line */
         }
@@ -52,7 +53,7 @@
 </head>
 <body>
     <div id="topLGUs" style="position:absolute; bottom:10px; left:10px; background:white; padding:10px; border-radius:5px; max-height:40vh; overflow:auto; font-size:14px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
-    <b>Top 10 LGUs</b><br>
+    <b>Top 10 LGUs Score</b><br>
     <table id="lguTable" border="1" style="width:100%; border-collapse: collapse;">
         <thead>
             <tr>
@@ -128,7 +129,7 @@
     top10.forEach(feat => {
         const props = feat.properties;
         const lguName = `${props.adm1_en}, ${props.adm2_en}, ${props.adm3_en}`;
-        const score = props[currentField]?.toFixed(4) ?? 'N/A';
+        const score = props[currentField]?.toFixed(2) ?? 'N/A';
         const row = `<tr><td>${lguName}</td><td>${score}</td></tr>`;
         tbody.innerHTML += row;
     });
