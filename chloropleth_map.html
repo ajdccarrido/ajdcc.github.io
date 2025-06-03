@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dynamic Choropleth Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        #map { height: 100vh; }
+        .info {
+            padding: 6px 8px;
+            background: white;
+            background: rgba(255,255,255,0.9);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+            line-height: 1.5;
+        }
+        .legend {
+            line-height: 18px;
+            color: #555;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+        .title-block {
+            font-size: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+<script>
+    const scoreFields = ['bu_gain_score', 'cl_loss_score', 'fh_loss_score', 'final_score'];
+    let currentField = 'final_score';
+    let geojsonLayer;
+    let merged;
+    let currentRegion = 'merged_ph_score';
+
+    const regionOptions = {
+        "Nationwide": "merged_ph_score",
+        "Region I": "region_01", 
+        "Region II": "region_02", 
+        "Region III": "region_03",
+        "Region IV-A": "region_04a", 
+        "Region IV-B": "region_04b", 
+        "Region V": "region_05",
+        "Region VI": "region_06", 
+        "Region VII": "region_07", 
+        "Region VIII": "region_08",
+        "Region IX": "region_09", 
+        "Region X": "region_10", 
+        "Region XI": "region_11",
+        "Region XII": "region_12", 
+        "Region XIII": "region_13", 
+        "BARMM": "region_barmm",
+        "CAR": "region_car", 
+        "NCR": "region_ncr"
+    };
+
+    const fieldBreaks = {
+        'bu_gain_score': [0.0000, 4.2400, 8.4800, 12.7200, 16.9600, 21.2000],
+        'cl_loss_score': [0.0000, 3.0353, 6.0706, 9.1059, 12.1412, 15.1766],
+        'fh_loss_score': [0.0000, 4.9598, 9.9196, 14.8794, 19.8392, 24.7990],
+        'final_score': [0.0500, 1.7400, 3.4300, 5.1200, 6.8100, 8.5000]
+    };
+
+    const map = L.map('map').setView([14.58, 120.96], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const title = L.control({position: 'topleft'});
+    title.onAdd = function () {
+        const div = L.DomUtil.create('div', 'info title-block');
+        div.innerHTML = `Nationwide Prioritization Scores based on<br>Cropland Loss, Forest Height Loss, and Built-up Gain`;
+        return div;
+    };
+    title.addTo(map);
+
+    function getColor(d, breaks) {
+        return d > breaks[4] ? '#d7191c' :
+               d > breaks[3] ? '#fdae61' :
+               d > breaks[2] ? '#ffffbf' :
+               d > breaks[1] ? '#abdda4' :
+               d > breaks[0] ? '#2b83ba' :
+                               '#808080';
+    }
+
+    function styleFeatureFactory(breaks) {
+        return function(feature) {
+            const val = feature.properties[currentField];
+            return {
+                fillColor: getColor(val, breaks),
+                weight: 1,
+                opacity: 1,
+                color: 'black',
+                fillOpacity: 0.7
+            };
+        };
+    }
+
+    function onEachFeature(feature, layer) {
+        const props = feature.properties;
+        const label = `${props.adm1_en}, ${props.adm2_en}, ${props.adm3_en}<br><b>${currentField}:</b> ${props[currentField].toFixed(4)}`;
+        layer.bindTooltip(label);
+    }
+
+    function updateMap() {
+        const breaks = fieldBreaks[currentField];
+        if (geojsonLayer) map.removeLayer(geojsonLayer);
+        geojsonLayer = L.geoJSON(merged, {
+            style: styleFeatureFactory(breaks),
+            onEachFeature: onEachFeature
+        }).addTo(map);
+
+        const bounds = geojsonLayer.getBounds();
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { maxZoom: 11 });
+        }
+
+        updateLegend(breaks);
+    }
+
+    const control = L.control({position: 'topright'});
+    control.onAdd = function () {
+        const div = L.DomUtil.create('div', 'info');
+
+        const regionSelect = document.createElement('select');
+        Object.keys(regionOptions).forEach(label => {
+            const option = document.createElement('option');
+            option.value = regionOptions[label];
+            option.textContent = label;
+            if (regionOptions[label] === currentRegion) option.selected = true;
+            regionSelect.appendChild(option);
+        });
+        regionSelect.onchange = function () {
+            currentRegion = this.value;
+            loadGeoJSON();
+        };
+
+        div.appendChild(document.createTextNode('Region: '));
+        div.appendChild(regionSelect);
+        div.appendChild(document.createElement('br'));
+
+        const fieldSelect = document.createElement('select');
+        scoreFields.forEach(field => {
+            const option = document.createElement('option');
+            option.value = field;
+            option.textContent = field;
+            if (field === currentField) option.selected = true;
+            fieldSelect.appendChild(option);
+        });
+        fieldSelect.onchange = function () {
+            currentField = this.value;
+            updateMap();
+        };
+        div.appendChild(document.createTextNode('Score: '));
+        div.appendChild(fieldSelect);
+
+        return div;
+    };
+    control.addTo(map);
+
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function () {
+        this._div = L.DomUtil.create('div', 'info legend');
+        return this._div;
+    };
+    legend.addTo(map);
+
+    function updateLegend(breaks) {
+        let html = `<strong>${currentField}</strong><br>`;
+        for (let i = 0; i < breaks.length - 1; i++) {
+            const from = breaks[i];
+            const to = breaks[i + 1];
+            const color = getColor((from + to) / 2, breaks);
+            html += `<i style="background:${color}"></i> ${from.toFixed(2)} &ndash; ${to.toFixed(2)}<br>`;
+        }
+        legend._div.innerHTML = html;
+    }
+
+    function loadGeoJSON() {
+        const path = `data/regions_split/${currentRegion}.geojson`;
+
+        fetch(path)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                merged = data;
+                updateMap();
+            })
+            .catch(error => {
+                console.error('Error loading GeoJSON:', error);
+                alert('Failed to load GeoJSON file. Check console for details.');
+            });
+    }
+
+    // Initial load
+    loadGeoJSON();
+</script>
+
+</body>
+</html>
