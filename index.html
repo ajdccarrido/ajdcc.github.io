@@ -34,10 +34,23 @@
             font-size: 20px;
             font-weight: bold;
         }
+
+        #topLGUs {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        max-height: 40vh;
+        overflow: auto;
+        font-size: 14px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        z-index: 1000;  /* <-- Add this line */
+        }
     </style>
 </head>
 <body>
-    <div id="map"></div>
     <div id="topLGUs" style="position:absolute; bottom:10px; left:10px; background:white; padding:10px; border-radius:5px; max-height:40vh; overflow:auto; font-size:14px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
     <b>Top 10 LGUs</b><br>
     <table id="lguTable" border="1" style="width:100%; border-collapse: collapse;">
@@ -52,6 +65,7 @@
         </tbody>
     </table>
 </div>
+    <div id="map"></div>
 <script>
     const scoreFields = ['bu_gain_score', 'cl_loss_score', 'fh_loss_score', 'final_score'];
     let currentField = 'final_score';
