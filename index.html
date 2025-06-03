@@ -49,6 +49,12 @@
         box-shadow: 0 0 10px rgba(0,0,0,0.2);
         z-index: 1000;  /* <-- Add this line */
         }
+
+        #lguTable td:nth-child(2),
+        #lguTable th:nth-child(2) {
+            text-align: center;
+        }
+
     </style>
 </head>
 <body>
@@ -68,199 +74,234 @@
 </div>
     <div id="map"></div>
 <script>
-    const scoreFields = ['bu_gain_score', 'cl_loss_score', 'fh_loss_score', 'final_score'];
-    let currentField = 'final_score';
-    let geojsonLayer;
-    let merged;
-    let currentRegion = 'merged_ph_score';
+/* ──────────────────────────  CONFIG  ────────────────────────── */
+const fieldBreaks = {
+    /* region-level breaks for w_prov_sco */
+    'nationwide': [0, 0.87,  1.81,  3.18,  5.30, 11.01],
+    'region_01':  [0, 0.44,  0.90,  1.39,  2.22,  3.53],
+    'region_02':  [0, 0.77,  1.53,  2.70,  4.01,  6.21],
+    'region_03':  [0, 0.84,  1.54,  2.50,  3.94,  5.90],
+    'region_04a': [0, 0.92,  1.70,  2.58,  3.98,  6.27],
+    'region_04b': [0, 0.71,  1.40,  2.08,  3.18,  5.43],
+    'region_05':  [0, 0.37,  0.69,  1.08,  1.57,  2.14],
+    'region_06':  [0, 0.60,  1.18,  2.13,  4.27,  5.41],
+    'region_07':  [0, 0.96,  2.03,  3.89,  7.28, 11.01],
+    'region_08':  [0, 0.81,  1.87,  3.48,  5.78,  9.87],
+    'region_09':  [0, 1.56,  2.36,  3.13,  4.01,  5.48],
+    'region_10':  [0, 1.31,  2.29,  3.52,  5.54,  8.41],
+    'region_11':  [0, 1.70,  2.64,  3.63,  5.27,  7.54],
+    'region_12':  [0, 1.41,  2.54,  3.64,  5.09,  8.08],
+    'region_13':  [0, 1.33,  2.47,  3.67,  5.27,  7.54],
+    'region_barmm': [0, 1.76,  3.08,  4.68,  6.96,  9.92],
+    'region_car': [0, 0.26,  0.52,  0.82,  1.51,  2.41],
+    'region_ncr': [0, 0.90,  1.54,  2.15,  3.72,  4.96],
 
-    const regionOptions = {
-        "Nationwide": "merged_ph_score",
-        "Region I": "region_01", 
-        "Region II": "region_02", 
-        "Region III": "region_03",
-        "Region IV-A": "region_04a", 
-        "Region IV-B": "region_04b", 
-        "Region V": "region_05",
-        "Region VI": "region_06", 
-        "Region VII": "region_07", 
-        "Region VIII": "region_08",
-        "Region IX": "region_09", 
-        "Region X": "region_10", 
-        "Region XI": "region_11",
-        "Region XII": "region_12", 
-        "Region XIII": "region_13", 
-        "BARMM": "region_barmm",
-        "CAR": "region_car", 
-        "NCR": "region_ncr"
-    };
+    /* fixed equal-interval breaks for the other fields */
+    'bu_gain_sc': [0.0000, 4.2400, 8.4800, 12.7200, 16.9600, 21.2000],
+    'cl_loss_sc': [0.0000, 3.0353, 6.0706,  9.1059, 12.1412, 15.1766],
+    'fh_loss_sc': [0.0000, 4.9598, 9.9196, 14.8794, 19.8392, 24.7990],
+    'final_scor': [0.0500, 1.7400, 3.4300,  5.1200,  6.8100,  8.5000]
+};
 
-    const fieldBreaks = {
-        'bu_gain_score': [0.0000, 4.2400, 8.4800, 12.7200, 16.9600, 21.2000],
-        'cl_loss_score': [0.0000, 3.0353, 6.0706, 9.1059, 12.1412, 15.1766],
-        'fh_loss_score': [0.0000, 4.9598, 9.9196, 14.8794, 19.8392, 24.7990],
-        'final_score': [0.0500, 1.7400, 3.4300, 5.1200, 6.8100, 8.5000]
-    };
+const scoreFields   = ['bu_gain_sc','cl_loss_sc','fh_loss_sc','final_scor','w_prov_sco'];
+const fieldAliases = {
+    'bu_gain_sc': 'Built-up Gain Score',
+    'cl_loss_sc': 'Cropland Loss Score',
+    'fh_loss_sc': 'Forest Height Loss Score',
+    'final_scor': 'Overall Score',
+    'w_prov_sco': 'Weighted Overall Score'
+};
 
-    const map = L.map('map').setView([14.58, 120.96], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+let   currentField  = 'w_prov_sco';        // default layer
+let   currentRegion = 'nationwide';        // default region key
+let   merged, geojsonLayer;
+/* ─────────────────────────────────────────────────────────────── */
 
-    const title = L.control({position: 'topleft'});
-    title.onAdd = function () {
-        const div = L.DomUtil.create('div', 'info title-block');
-        div.innerHTML = `Nationwide Prioritization Scores based on<br>Cropland Loss, Forest Height Loss, and Built-up Gain`;
-        return div;
-    };
-    title.addTo(map);
+/*  REGION and MAP setup (unchanged except for removed breaks)  */
+const regionOptions = {
+    "Nationwide": "nationwide",
+    "Region I": "region_01", 
+    "Region II": "region_02", 
+    "Region III": "region_03",
+    "Region IV-A": "region_04a", 
+    "Region IV-B": "region_04b", 
+    "Region V": "region_05",
+    "Region VI": "region_06", 
+    "Region VII": "region_07", 
+    "Region VIII": "region_08",
+    "Region IX": "region_09", 
+    "Region X": "region_10", 
+    "Region XI": "region_11",
+    "Region XII": "region_12", 
+    "Region XIII": "region_13", 
+    "BARMM": "region_barmm",
+    "CAR": "region_car", 
+    "NCR": "region_ncr"
+};
 
-    function updateTopLGUs() {
-    if (!merged || !merged.features) return;
+const map = L.map('map', {
+    zoomControl: false
+}).setView([14.58, 120.96], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            {attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 
-    const features = [...merged.features];
+L.control.zoom({ position: 'topright' }).addTo(map);
 
-    features.sort((a, b) => b.properties[currentField] - a.properties[currentField]);
+const title = L.control({position:'topleft'});
+title.onAdd = () => {
+    const d = L.DomUtil.create('div','info title-block');
+    d.innerHTML = `Nationwide Prioritization Scores based on<br>
+                   Cropland Loss, Forest Height Loss, and Built-up Gain`;
+    return d;
+};
+title.addTo(map);
 
-    const top10 = features.slice(0, 10);
-    const tbody = document.querySelector('#lguTable tbody');
-    tbody.innerHTML = '';
+function updateTopLGUs() {
+if (!merged || !merged.features) return;
 
-    top10.forEach(feat => {
-        const props = feat.properties;
-        const lguName = `${props.adm1_en}, ${props.adm2_en}, ${props.adm3_en}`;
-        const score = props[currentField]?.toFixed(2) ?? 'N/A';
-        const row = `<tr><td>${lguName}</td><td>${score}</td></tr>`;
-        tbody.innerHTML += row;
-    });
+const features = [...merged.features];
+
+features.sort((a, b) => b.properties[currentField] - a.properties[currentField]);
+
+const top10 = features.slice(0, 10);
+const tbody = document.querySelector('#lguTable tbody');
+tbody.innerHTML = '';
+
+top10.forEach(feat => {
+    const props = feat.properties;
+    const lguName = `${props.adm3_en}, ${props.adm2_en}`;
+    const score = props[currentField]?.toFixed(2) ?? 'N/A';
+    const row = `<tr><td>${lguName}</td><td>${score}</td></tr>`;
+    tbody.innerHTML += row;
+});
 }
 
-    function getColor(d, breaks) {
-        return d > breaks[4] ? '#d7191c' :
-               d > breaks[3] ? '#fdae61' :
-               d > breaks[2] ? '#ffffbf' :
-               d > breaks[1] ? '#abdda4' :
-               d > breaks[0] ? '#2b83ba' :
-                               '#808080';
-    }
+/* ─────────────── helper: choose correct break set ───────────── */
+function updateTableHeader() {
+    const scoreHeader = document.querySelector('#lguTable thead tr th:nth-child(2)');
+    scoreHeader.textContent = fieldAliases[currentField] || 'Score';
+}
 
-    function styleFeatureFactory(breaks) {
-        return function(feature) {
-            const val = feature.properties[currentField];
-            return {
-                fillColor: getColor(val, breaks),
-                weight: 1,
-                opacity: 1,
-                color: 'black',
-                fillOpacity: 0.7
-            };
+function getBreaks() {
+    // Weighted provincial → look up by region
+    if (currentField === 'w_prov_sco') return fieldBreaks[currentRegion];
+    // Otherwise by field name
+    return fieldBreaks[currentField];
+}
+
+/*  basic color ramp  */
+function getColor(val, brk){
+    return val > brk[4] ? '#d7191c' :
+           val > brk[3] ? '#fdae61' :
+           val > brk[2] ? '#ffffbf' :
+           val > brk[1] ? '#abdda4' :
+           val > brk[0] ? '#2b83ba' :  '#808080';
+}
+
+function styleFeatureFactory(breaks){
+    return f=>{
+        const v = Number(f.properties[currentField]);
+        return {
+            fillColor : getColor(v, breaks),
+            weight    : 1,
+            color     : 'black',
+            opacity   : 1,
+            fillOpacity:0.7
         };
-    }
-
-    function onEachFeature(feature, layer) {
-        const props = feature.properties;
-        const label = `${props.adm1_en}, ${props.adm2_en}, ${props.adm3_en}<br><b>${currentField}:</b> ${props[currentField].toFixed(4)}`;
-        layer.bindTooltip(label);
-    }
-
-    function updateMap() {
-        const breaks = fieldBreaks[currentField];
-        if (geojsonLayer) map.removeLayer(geojsonLayer);
-        geojsonLayer = L.geoJSON(merged, {
-            style: styleFeatureFactory(breaks),
-            onEachFeature: onEachFeature
-        }).addTo(map);
-
-        const bounds = geojsonLayer.getBounds();
-        if (bounds.isValid()) {
-            map.fitBounds(bounds, { maxZoom: 11 });
-        }
-
-        updateLegend(breaks);
-        updateTopLGUs();
-    }
-
-    const control = L.control({position: 'topright'});
-    control.onAdd = function () {
-        const div = L.DomUtil.create('div', 'info');
-
-        const regionSelect = document.createElement('select');
-        Object.keys(regionOptions).forEach(label => {
-            const option = document.createElement('option');
-            option.value = regionOptions[label];
-            option.textContent = label;
-            if (regionOptions[label] === currentRegion) option.selected = true;
-            regionSelect.appendChild(option);
-        });
-        regionSelect.onchange = function () {
-            currentRegion = this.value;
-            loadGeoJSON();
-        };
-
-        div.appendChild(document.createTextNode('Region: '));
-        div.appendChild(regionSelect);
-        div.appendChild(document.createElement('br'));
-
-        const fieldSelect = document.createElement('select');
-        scoreFields.forEach(field => {
-            const option = document.createElement('option');
-            option.value = field;
-            option.textContent = field;
-            if (field === currentField) option.selected = true;
-            fieldSelect.appendChild(option);
-        });
-        fieldSelect.onchange = function () {
-            currentField = this.value;
-            updateMap();
-        };
-        div.appendChild(document.createTextNode('Score: '));
-        div.appendChild(fieldSelect);
-
-        return div;
     };
-    control.addTo(map);
+}
 
-    const legend = L.control({position: 'bottomright'});
-    legend.onAdd = function () {
-        this._div = L.DomUtil.create('div', 'info legend');
-        return this._div;
-    };
-    legend.addTo(map);
+function onEachFeature(feature, layer){
+    const p  = feature.properties;
+    const v  = (p[currentField] ?? 0).toFixed(2);
+    const alias = fieldAliases[currentField] || currentField;
+    const txt = `${p.adm1_en}, ${p.adm2_en}, ${p.adm3_en}<br>
+                <b>Hierarchy:</b> ${p.ph_hierarc}<br>
+                <b>${alias}:</b> ${v}`;
+    layer.bindTooltip(txt);
+}
 
-    function updateLegend(breaks) {
-        let html = `<strong>${currentField}</strong><br>`;
-        for (let i = 0; i < breaks.length - 1; i++) {
-            const from = breaks[i];
-            const to = breaks[i + 1];
-            const color = getColor((from + to) / 2, breaks);
-            html += `<i style="background:${color}"></i> ${from.toFixed(2)} &ndash; ${to.toFixed(2)}<br>`;
-        }
-        legend._div.innerHTML = html;
+/* ───────────────  main redraw  ─────────────── */
+function updateMap(){
+    const brk = getBreaks();
+    if (geojsonLayer) map.removeLayer(geojsonLayer);
+
+    geojsonLayer = L.geoJSON(merged,{
+        style : styleFeatureFactory(brk),
+        onEachFeature
+    }).addTo(map);
+
+    const b = geojsonLayer.getBounds();
+    if (b.isValid()) map.fitBounds(b,{maxZoom:11});
+
+    updateLegend(brk);
+    updateTopLGUs();
+    updateTableHeader();
+}
+
+const legend = L.control({position:'bottomright'});
+legend.onAdd = () => (legend._div = L.DomUtil.create('div','info legend'));
+
+/* update legend with chosen breaks */
+function updateLegend(brk){
+    let alias = fieldAliases[currentField] || currentField;
+    let h = `<strong>${alias}</strong><br>`;
+    for (let i=0;i<brk.length-1;i++){
+        const from=brk[i], to=brk[i+1];
+        h += `<i style="background:${getColor((from+to)/2, brk)}"></i>
+              ${from.toFixed(2)}–${to.toFixed(2)}<br>`;
     }
+    legend._div.innerHTML = h;
+}
+legend.addTo(map);
 
-    function loadGeoJSON() {
-        const path = `data/regions_split/${currentRegion}.geojson`;
+/* ─────────────── dropdown UI (region + field) ─────────────── */
+const control = L.control({position:'topleft'});
+control.onAdd = () => {
+    const d = L.DomUtil.create('div','info');
 
-        fetch(path)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                merged = data;
-                updateMap();
-            })
-            .catch(error => {
-                console.error('Error loading GeoJSON:', error);
-                alert('Failed to load GeoJSON file. Check console for details.');
-            });
-    }
+    /* Region select */
+    const selR = document.createElement('select');
+    Object.entries(regionOptions).forEach(([lab,val])=>{
+        const o = new Option(lab,val,val===currentRegion,val===currentRegion);
+        selR.add(o);
+    });
+    selR.onchange = ()=>{ currentRegion = selR.value; loadGeoJSON(); };
 
-    // Initial load
-    loadGeoJSON();
+    /* Field select */
+    const selF = document.createElement('select');
+    scoreFields.forEach(f => {
+        const label = fieldAliases[f] || f;
+        const o = new Option(label, f, f === currentField, f === currentField);
+        selF.add(o);
+    });
+
+
+    selF.onchange = ()=>{
+    currentField = selF.value;
+    updateMap();
+    updateTableHeader();  // <-- Added to reflect correct column name
+};
+
+    d.append('Region: ',selR,document.createElement('br'),'Score: ',selF);
+    return d;
+};
+control.addTo(map);
+
+/* ─────────────── load data file ─────────────── */
+function loadGeoJSON(){
+    const url = `data/regions_split/${currentRegion}.geojson`;
+    fetch(url)
+      .then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(j=>{ merged=j; updateMap(); })
+      .catch(e=>{
+          console.error('GeoJSON load error',e);
+          alert('Failed to load data for this region.');
+      });
+}
+
+/* first draw */
+loadGeoJSON();
 </script>
-
 </body>
 </html>
